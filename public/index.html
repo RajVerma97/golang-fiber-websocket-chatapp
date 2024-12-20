@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Real-time Chat</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 0;
+        background-color: #f4f4f9;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+      }
+
+      .chat-container {
+        max-width: 700px;
+        width: 90%;
+        min-width: 400px;
+        background: #ffffff;
+        border-radius: 10px;
+        box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .chat-header {
+        background: #0078d7;
+        color: #ffffff;
+        padding: 15px;
+        text-align: center;
+        font-size: 18px;
+        font-weight: bold;
+      }
+
+      #messages {
+        flex-grow: 1;
+        padding: 15px;
+        overflow-y: auto;
+        max-height: 300px;
+      }
+
+      .message {
+        margin-bottom: 10px;
+      }
+
+      .message.system {
+        text-align: center;
+        color: #888888;
+        font-style: italic;
+      }
+
+      .message .username {
+        font-weight: bold;
+        color: #0078d7;
+        margin-bottom: 5px;
+      }
+
+      .message div {
+        padding: 5px 10px;
+        background: #f1f1f1;
+        border-radius: 5px;
+        display: inline-block;
+        max-width: 80%;
+        word-wrap: break-word;
+      }
+
+      .message:nth-child(even) div {
+        background: #e0f7fa;
+      }
+
+      .input-container {
+        display: flex;
+        padding: 10px;
+        background: #f8f9fa;
+        border-top: 1px solid #e0e0e0;
+      }
+
+      .input-container input[type="text"] {
+        flex-grow: 1;
+        padding: 10px;
+        margin-right: 10px;
+        border: 1px solid #e0e0e0;
+        border-radius: 5px;
+        outline: none;
+      }
+
+      .input-container button {
+        background: #0078d7;
+        color: #ffffff;
+        border: none;
+        padding: 10px 15px;
+        border-radius: 5px;
+        cursor: pointer;
+        font-weight: bold;
+        transition: background-color 0.3s;
+      }
+
+      .input-container button:hover {
+        background: #005bb5;
+      }
+
+      .input-container input:focus {
+        border-color: #0078d7;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="chat-container">
+      <div class="chat-header">Real-time Chat</div>
+      <div id="messages"></div>
+      <div class="input-container">
+        <input type="text" id="username" placeholder="Your username" />
+        <input
+          type="text"
+          id="messageInput"
+          placeholder="Type your message..."
+        />
+        <button onclick="sendMessage()">Send</button>
+      </div>
+    </div>
+
+    <script>
+      let ws;
+      let reconnectAttempts = 0;
+      const maxReconnectAttempts = 5;
+
+      function connect() {
+        ws = new WebSocket("ws://localhost:3000/ws");
+
+        ws.onopen = function () {
+          console.log("Connected to chat server");
+          reconnectAttempts = 0;
+          addMessage("System", "Connected to chat server", "system");
+        };
+
+        ws.onmessage = function (event) {
+          console.log("Message received:", event.data);
+          try {
+            const msg = JSON.parse(event.data);
+            addMessage(msg.username, msg.content, msg.type);
+          } catch (e) {
+            console.error("Error parsing message:", e);
+          }
+        };
+
+        ws.onclose = function (event) {
+          console.log("Disconnected from chat server", event);
+          addMessage("System", "Disconnected from chat server", "system");
+
+          if (reconnectAttempts < maxReconnectAttempts) {
+            reconnectAttempts++;
+            setTimeout(connect, 3000);
+          } else {
+            addMessage(
+              "System",
+              "Could not reconnect to server after multiple attempts",
+              "system"
+            );
+          }
+        };
+
+        ws.onerror = function (error) {
+          console.error("WebSocket error:", error);
+        };
+      }
+
+      function sendMessage() {
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+          addMessage("System", "Not connected to chat server", "system");
+          return;
+        }
+
+        const username = document.getElementById("username").value.trim();
+        const content = document.getElementById("messageInput").value.trim();
+
+        if (!username) {
+          addMessage("System", "Please enter a username", "system");
+          return;
+        }
+
+        if (!content) {
+          return;
+        }
+
+        const message = {
+          type: "chat",
+          content: content,
+          username: username,
+        };
+
+        try {
+          ws.send(JSON.stringify(message));
+          console.log("Message sent:", message);
+          document.getElementById("messageInput").value = "";
+        } catch (e) {
+          console.error("Error sending message:", e);
+          addMessage("System", "Error sending message", "system");
+        }
+      }
+
+      function addMessage(username, content, type) {
+        const messagesDiv = document.getElementById("messages");
+        const messageDiv = document.createElement("div");
+        messageDiv.className = `message ${type}`;
+
+        if (type === "system") {
+          messageDiv.textContent = content;
+        } else {
+          const usernameSpan = document.createElement("div");
+          usernameSpan.className = "username";
+          usernameSpan.textContent = username;
+
+          const contentSpan = document.createElement("div");
+          contentSpan.textContent = content;
+
+          messageDiv.appendChild(usernameSpan);
+          messageDiv.appendChild(contentSpan);
+        }
+
+        messagesDiv.appendChild(messageDiv);
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+      }
+
+      document
+        .getElementById("messageInput")
+        .addEventListener("keypress", function (e) {
+          if (e.key === "Enter") {
+            sendMessage();
+          }
+        });
+
+      connect();
+    </script>
+  </body>
+</html>
